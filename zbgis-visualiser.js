@@ -2,6 +2,8 @@
 // @name         ZBGIS visualiser
 // @namespace    http://tampermonkey.net/
 // @version      1.0.0
+// @updateURL    https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js
+// @downloadURL  https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js
 // @description  Tool that allows visualization and information retrieval of all "E-ground plots" for a given name and city in Slovak Cadastre of Real Estate
 // @author       Palsoft
 // @match        https://zbgis.skgeodesy.sk/*
