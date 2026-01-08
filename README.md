@@ -13,7 +13,7 @@ This tool allows visualization and information fetching of all E &amp; C-ground 
 
 ## How to use it
 1. visit [https://zbgis.skgeodesy.sk/mkzbgis/sk/kataster](https://zbgis.skgeodesy.sk/mapka/sk/kataster), click somewhere in the map and pass the captcha test
-2. at the right side of the screen you should see a green button indicating that the ZBGIS Visualiser is working:
+2. at the right side of the screen you should see a green button indicating that the ZBGIS Visualiser is working (you can stop the script anytime by clicking the button):
 <img width="55" height="170" alt="image" src="https://github.com/user-attachments/assets/84ab6a4f-707e-44a6-9965-00bd622ab1fe" />
 
 3. type the city (cadastral unit) into the search bar and lock it with the lock icon on the right
