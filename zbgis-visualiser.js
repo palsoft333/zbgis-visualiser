@@ -1,10 +1,36 @@
-// ==UserScript==
+# zbgis-visualiser
+This tool allows visualization and information fetching of all E &amp; C-ground plots for a given name in Slovak Cadastre of Real Estate (zbgis.skgeodesy.sk)
+
+## Requirements
+- Chrome, Microsoft Edge, Safari, Opera Next or Firefox browser
+- [Tampermonkey browser extension](https://www.tampermonkey.net/index.php)
+
+## Installation
+1. Download [Tampermonkey browser extension](https://www.tampermonkey.net/index.php) suited for your browser
+2. In the Tampermonkey **Settings** tab, **General** section, set **Config mode** to ```Advanced```
+3. In the Tampermonkey **Settings** tab, **Security** section, set **Allow scripts to access cookies** to ```All```
+4. In the Tampermonkey **Utilities** tab, set **Import from URL** to ```https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js``` and click **Install**
+
+## How to use it
+1. visit [https://zbgis.skgeodesy.sk/mkzbgis/sk/kataster](https://zbgis.skgeodesy.sk/mapka/sk/kataster), click somewhere in the map and pass the captcha test
+2. at the right side of the screen you should see a green button indicating that the ZBGIS Visualiser is working (you can stop the script anytime by clicking the button):
+<img width="55" height="170" alt="image" src="https://github.com/user-attachments/assets/84ab6a4f-707e-44a6-9965-00bd622ab1fe" />
+
+3. type the city (cadastral unit) into the search bar and lock it with the lock icon on the right
+<img width="445" height="104" alt="image" src="https://github.com/user-attachments/assets/d880049d-f04d-42fa-9ec6-784d97d8216d" />
+
+4. type person in the search bar and select appropriate search result
+5. for the very first run of the script, you will be asked to ```Always Allow``` the Tampermonkey script to access the webpage
+6. you may need to Refresh the zbgis website and repeat the steps from step 3 after allowing the script
+
+## What information I could get?
+- you will be shown all of E (red) & C (blue)-ground plots on the m// ==UserScript==
 // @name         ZBGIS visualiser
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.1.0
 // @updateURL    https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js
 // @downloadURL  https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js
-// @description  Tool that allows visualization and information retrieval of all "E-ground plots" for a given name and city in Slovak Cadastre of Real Estate
+// @description  Tool that allows visualization and information retrieval of all E & C-ground plots for a given name in Slovak Cadastre of Real Estate
 // @author       Palsoft
 // @match        https://zbgis.skgeodesy.sk/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=skgeodesy.sk
@@ -34,6 +60,9 @@
         const controlDiv = document.querySelector('.control.top-right');
         if (!controlDiv || document.getElementById('zbgis-toggle')) return;
         
+        const container = document.createElement('div');
+        container.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+
         const toggleButton = document.createElement('div');
         toggleButton.className = 'map-action-button mat-elevation-z2';
         toggleButton.style.cssText = 'position: relative; z-index: 1000; pointer-events: auto;';
@@ -41,6 +70,18 @@
             <button id="zbgis-toggle" color="basic" mat-icon-button="" class="mat-mdc-tooltip-trigger mdc-icon-button mat-mdc-icon-button mat-basic mat-mdc-button-base" style="background-color: ${isEnabled ? '#4CAF50' : '#f44336'}; cursor: pointer; pointer-events: auto;" title="ZBGIS Visualiser">
                 <span class="mat-mdc-button-persistent-ripple mdc-icon-button__ripple"></span>
                 <mat-icon role="img" class="mat-icon notranslate material-icons mat-ligature-font mat-icon-no-color" style="color: white">${isEnabled ? 'visibility' : 'visibility_off'}</mat-icon>
+                <span class="mat-mdc-focus-indicator"></span>
+                <span class="mat-mdc-button-touch-target"></span>
+            </button>
+        `;
+
+        const exportButton = document.createElement('div');
+        exportButton.className = 'map-action-button mat-elevation-z2';
+        exportButton.style.cssText = 'position: relative; z-index: 1000; pointer-events: auto;';
+        exportButton.innerHTML = `
+            <button id="zbgis-export" color="basic" mat-icon-button="" class="mat-mdc-tooltip-trigger mdc-icon-button mat-mdc-icon-button mat-basic mat-mdc-button-base" style="background-color: #2196F3; cursor: pointer; pointer-events: auto;" title="Export map as PNG">
+                <span class="mat-mdc-button-persistent-ripple mdc-icon-button__ripple"></span>
+                <mat-icon role="img" class="mat-icon notranslate material-icons mat-ligature-font mat-icon-no-color" style="color: white">photo_camera</mat-icon>
                 <span class="mat-mdc-focus-indicator"></span>
                 <span class="mat-mdc-button-touch-target"></span>
             </button>
@@ -58,14 +99,25 @@
             icon.textContent = isEnabled ? 'visibility' : 'visibility_off';
             
             if (!isEnabled) {
-                // Clear existing graphics
                 if (unsafeWindow.zbgismap?._accessor?.obj?.view?.graphics) {
                     unsafeWindow.zbgismap._accessor.obj.view.graphics.removeAll();
                 }
             }
         }, true);
+
+        exportButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            exportMap();
+        }, true);
         
-        controlDiv.appendChild(toggleButton);
+        container.appendChild(toggleButton);
+        container.appendChild(exportButton);
+        controlDiv.appendChild(container);
+
+        exportBtnRef = exportButton.querySelector('button');
+        exportIconRef = exportButton.querySelector('mat-icon');
     }
 
     async function fetchAllParticipants(url, cookie) {
@@ -164,6 +216,50 @@
     }
     
     let tooltipSetup = false;
+    let exportBtnRef = null;
+    let exportIconRef = null;
+    let exportOrigBg = null;
+
+    async function exportMap() {
+        const view = unsafeWindow.zbgismap?._accessor?.obj?.view;
+        if (!view) {
+            alert('Map not ready.');
+            return;
+        }
+
+        const graphics = view.graphics;
+        if (graphics.length === 0) {
+            alert('No parcels to export. Load parcels first.');
+            return;
+        }
+
+        if (exportBtnRef && exportIconRef) {
+            exportOrigBg = exportBtnRef.style.backgroundColor;
+            exportBtnRef.style.backgroundColor = '#FF9800';
+            exportIconRef.textContent = 'hourglass_top';
+        }
+
+        try {
+            await view.goTo({ target: graphics, padding: 0 });
+            await new Promise(r => setTimeout(r, 1500));
+            const screenshot = await view.takeScreenshot({ width: window.innerWidth * 6, height: window.innerHeight * 6 });
+            if (!screenshot || !screenshot.dataUrl) {
+                throw new Error('Screenshot returned no data');
+            }
+            const link = document.createElement('a');
+            link.download = `zbgis-export-${Date.now()}.png`;
+            link.href = screenshot.dataUrl;
+            link.click();
+        } catch (err) {
+            console.error('Export error:', err);
+            alert('Export failed: ' + err.message);
+        } finally {
+            if (exportBtnRef && exportIconRef) {
+                exportBtnRef.style.backgroundColor = exportOrigBg;
+                exportIconRef.textContent = 'photo_camera';
+            }
+        }
+    }
 
     async function getParcelShare(parcelId, area, name, type) {
         const cookie = checkCaptcha();
@@ -198,6 +294,17 @@
             const area = feature.attributes.DESCRIPTIVE_AREA_OF_PARCEL;
             const share = await getParcelShare(parcelId, area, name, type);
             const color = type === 'E' ? [255, 0, 0] : [0, 0, 255];
+            const parcelNumber = feature.attributes.PARCEL_NUMBER;
+            
+            // Calculate centroid for text placement
+            const rings = feature.geometry.rings[0];
+            let sumX = 0, sumY = 0;
+            for (const ring of rings) {
+                sumX += ring[0];
+                sumY += ring[1];
+            }
+            const centroidX = sumX / rings.length;
+            const centroidY = sumY / rings.length;
             
             view.graphics.add({
                 geometry: {
@@ -214,7 +321,37 @@
                     }
                 },
                 attributes: {
-                    PARCEL_NUMBER: feature.attributes.PARCEL_NUMBER,
+                    PARCEL_NUMBER: parcelNumber,
+                    AREA: area,
+                    SHARE: share,
+                    TYPE: type
+                }
+            });
+
+            // Add parcel number text label
+            view.graphics.add({
+                geometry: {
+                    type: "point",
+                    x: centroidX,
+                    y: centroidY,
+                    spatialReference: { wkid: 4326 }
+                },
+                symbol: {
+                    type: "text",
+                    color: "white",
+                    text: parcelNumber,
+                    angle: 0,
+                    font: {
+                        size: 8,
+                        weight: "bold"
+                    },
+                    haloColor: "black",
+                    haloSize: 2,
+                    horizontalAlignment: "center",
+                    verticalAlignment: "middle"
+                },
+                attributes: {
+                    PARCEL_NUMBER: parcelNumber,
                     AREA: area,
                     SHARE: share,
                     TYPE: type

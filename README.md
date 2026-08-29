@@ -24,9 +24,11 @@ This tool allows visualization and information fetching of all E &amp; C-ground 
 6. you may need to Refresh the zbgis website and repeat the steps from step 3 after allowing the script
 
 ## What information I could get?
-- you will be shown all of E (red) & C (blue)-ground plots on the map with all of the shares calculated:
+- you will be shown all of E (red) & C (blue)-ground plots on the map with their numbers and all of the shares calculated:
   
 <img width="1445" height="853" alt="image" src="https://github.com/user-attachments/assets/5eff18c0-4d71-49f2-9c72-a01c2d14e3fb" />
+
+- you can export the final map with all the plots to PNG file by clicking on the "blue photograph" icon (be aware that it can take longer time depending the number of plots and map size)
 
 Any help testing and/or pull requesting greatly appreciated.
 
