@@ -8,7 +8,7 @@ This tool allows visualization and information fetching of all E &amp; C-ground 
 ## Installation
 1. Download [Tampermonkey browser extension](https://www.tampermonkey.net/index.php) suited for your browser
 2. In the Tampermonkey **Settings** tab, **General** section, set **Config mode** to ```Advanced```
-3. In the Tampermonkey **Settings** tab, **Security** section, set **Allow scripts to access cookies** to ```All```
+3. In the Tampermonkey **Settings** tab, **Security** section, set **Allow scripts to access cookies** to ```All``` and click **Save** button under the section
 4. In the Tampermonkey **Utilities** tab, set **Import from URL** to ```https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js``` and click **Install**
 
 ## How to use it

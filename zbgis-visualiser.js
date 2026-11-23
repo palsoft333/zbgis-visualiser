@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ZBGIS visualiser
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.2.0
 // @updateURL    https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js
 // @downloadURL  https://raw.githubusercontent.com/palsoft333/zbgis-visualiser/refs/heads/main/zbgis-visualiser.js
 // @description  Tool that allows visualization and information retrieval of all E & C-ground plots for a given name in Slovak Cadastre of Real Estate
@@ -27,6 +27,7 @@
     }
 
     let progressData = { current: 0, total: 0 };
+    let totalShare = 0;
     let isEnabled = localStorage.getItem('zbgis-visualizer-enabled') !== 'false';
     let shouldStop = false;
 
@@ -94,6 +95,20 @@
         exportIconRef = exportButton.querySelector('mat-icon');
     }
 
+    function parseJson(response, url) {
+        if (response.status < 200 || response.status >= 300) {
+            if (response.status === 401 || response.status === 403) {
+                throw new Error(`Unauthorized (HTTP ${response.status}): CAPTCHA cookie missing or expired. Reload the page and solve the CAPTCHA.`);
+            }
+            throw new Error(`Request failed (HTTP ${response.status}): ${url}`);
+        }
+        try {
+            return JSON.parse(response.responseText);
+        } catch (e) {
+            throw new Error(`Invalid JSON response (HTTP ${response.status}): ${url}`);
+        }
+    }
+
     async function fetchAllParticipants(url, cookie) {
         console.log(url);
         const response = await new Promise((resolve, reject) => {
@@ -101,7 +116,13 @@
                 method: 'GET',
                 url: url,
                 headers: { 'Cookie': `.ESKN_RECAPTCHA=${cookie}` },
-                onload: (response) => resolve(JSON.parse(response.responseText)),
+                onload: (response) => {
+                    try {
+                        resolve(parseJson(response, url));
+                    } catch (e) {
+                        reject(e);
+                    }
+                },
                 onerror: reject
             });
         });
@@ -129,6 +150,7 @@
         
         showProgress();
         
+        let loadError = null;
         try {
             const url = `https://kataster.skgeodesy.sk/PortalODataPublic/Participants?$filter=Subjects/any(p:%20p/Id%20eq%20${id})%20and%20Municipality/Code%20eq%20${ku}&$select=Name&$expand=Municipality($select=Name;$expand=District($select=Name)),OwnershipRecord($select=Id,Order;$expand=Folio($select=No,Id,OwnersCount,CountOfParcelsC,CountOfParcelsE)),CadastralUnit($select=Name,Code)&$orderby=OwnershipRecord/Folio/No,OwnershipRecord/Order&$skip=0`;
             
@@ -144,6 +166,7 @@
             }
             
             progressData = { current: 0, total: totalParcels };
+            totalShare = 0;
             updateProgress();
             
             for (const item of allItems) {
@@ -156,9 +179,10 @@
             }
         } catch (e) {
             console.error('Search error:', e);
+            loadError = e.message;
         }
         
-        hideProgress();
+        showSummary(loadError);
     }
     
     async function loadParcels(folioId, name) {
@@ -243,21 +267,31 @@
         
         for (const participant of allParticipants) {
             if (participant.Name === name) {
-                return Math.round((area / participant.Denominator) * participant.Numerator * 10) / 10;
+                return {
+                    share: Math.round((area / participant.Denominator) * participant.Numerator * 10) / 10,
+                    ratio: `${participant.Numerator}/${participant.Denominator}`
+                };
             }
         }
-        return 0;
+        return { share: 0, ratio: null };
     }
 
     async function addParcelToMap(parcelId, name, type) {
         const cookie = checkCaptcha();
         const mapService = type === 'E' ? 'parcels_e_view' : 'parcels_c_view';
+        const url = `https://kataster.skgeodesy.sk/eskn/rest/services/VRM/${mapService}/MapServer/0/query?objectIds=${parcelId}&returnGeometry=true&outSR=4326&f=json&outFields=DESCRIPTIVE_AREA_OF_PARCEL,PARCEL_NUMBER`;
         const response = await new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: `https://kataster.skgeodesy.sk/eskn/rest/services/VRM/${mapService}/MapServer/0/query?objectIds=${parcelId}&returnGeometry=true&outSR=4326&f=json&outFields=DESCRIPTIVE_AREA_OF_PARCEL,PARCEL_NUMBER`,
+                url: url,
                 headers: { 'Cookie': `.ESKN_RECAPTCHA=${cookie}` },
-                onload: (response) => resolve(JSON.parse(response.responseText)),
+                onload: (response) => {
+                    try {
+                        resolve(parseJson(response, url));
+                    } catch (e) {
+                        reject(e);
+                    }
+                },
                 onerror: reject
             });
         });
@@ -266,7 +300,9 @@
             const feature = response.features[0];
             const view = unsafeWindow.zbgismap._accessor.obj.view;
             const area = feature.attributes.DESCRIPTIVE_AREA_OF_PARCEL;
-            const share = await getParcelShare(parcelId, area, name, type);
+            const shareInfo = await getParcelShare(parcelId, area, name, type);
+            const share = shareInfo.share;
+            totalShare += share;
             const color = type === 'E' ? [255, 0, 0] : [0, 0, 255];
             const parcelNumber = feature.attributes.PARCEL_NUMBER;
             
@@ -298,6 +334,7 @@
                     PARCEL_NUMBER: parcelNumber,
                     AREA: area,
                     SHARE: share,
+                    RATIO: shareInfo.ratio,
                     TYPE: type
                 }
             });
@@ -328,6 +365,7 @@
                     PARCEL_NUMBER: parcelNumber,
                     AREA: area,
                     SHARE: share,
+                    RATIO: shareInfo.ratio,
                     TYPE: type
                 }
             });
@@ -346,7 +384,8 @@
                     const graphic = response.results[0].graphic;
                     if (graphic.attributes && graphic.attributes.PARCEL_NUMBER) {
                         const typeLabel = graphic.attributes.TYPE === 'E' ? 'E-parcel' : 'C-parcel';
-                        showTooltip(event.native.clientX, event.native.clientY, `${graphic.attributes.PARCEL_NUMBER} (${typeLabel})`, `Area: ${graphic.attributes.AREA}m²<br>Share: ${graphic.attributes.SHARE}m²`);
+                        const ratio = graphic.attributes.RATIO ? ` (${graphic.attributes.RATIO})` : '';
+                        showTooltip(event.native.clientX, event.native.clientY, `${graphic.attributes.PARCEL_NUMBER} (${typeLabel})`, `Area: ${graphic.attributes.AREA}m²<br>Share: ${graphic.attributes.SHARE}m²${ratio}`);
                         return;
                     }
                 }
@@ -376,6 +415,7 @@
     
     function showProgress() {
         shouldStop = false;
+        hideSummary();
         const progress = document.createElement('div');
         progress.id = 'search-progress';
         progress.innerHTML = '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border:1px solid #ccc;z-index:9999"><div id="progress-text">Loading parcels...</div><button id="stop-button" style="margin-top:10px;padding:5px 10px;background:#f44336;color:white;border:none;cursor:pointer">Stop</button></div>';
@@ -398,6 +438,36 @@
     function hideProgress() {
         const progress = document.getElementById('search-progress');
         if (progress) progress.remove();
+    }
+    
+    function showSummary(error) {
+        hideProgress();
+        const box = document.createElement('div');
+        box.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border:1px solid #ccc;z-index:9999;';
+        box.innerHTML = `<div>Parcels loaded: ${progressData.current}/${progressData.total}</div><div>Total share: ${Math.round(totalShare * 10) / 10} m²</div>`;
+        
+        if (error) {
+            const errorLine = document.createElement('div');
+            errorLine.style.cssText = 'color:#f44336;margin-top:5px;max-width:420px;word-break:break-all;';
+            errorLine.textContent = error;
+            box.appendChild(errorLine);
+        }
+        
+        const closeButton = document.createElement('button');
+        closeButton.style.cssText = 'margin-top:10px;padding:5px 10px;background:#4CAF50;color:white;border:none;cursor:pointer';
+        closeButton.textContent = 'Close';
+        closeButton.addEventListener('click', () => hideSummary());
+        box.appendChild(closeButton);
+        
+        const summary = document.createElement('div');
+        summary.id = 'search-summary';
+        summary.appendChild(box);
+        document.body.appendChild(summary);
+    }
+    
+    function hideSummary() {
+        const summary = document.getElementById('search-summary');
+        if (summary) summary.remove();
     }
 
     // Listen for URL changes
